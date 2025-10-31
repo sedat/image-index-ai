@@ -8,5 +8,4 @@ export type Photo = {
 
 export type PhotosResponse = { photos: Photo[] };
 export type UploadResponse = { photo: Photo };
-export type SearchResponse = { query: string; tags: string[]; photos: Photo[] };
-
+export type SearchResponse = { query: string; photos: Photo[]; tags?: string[] };

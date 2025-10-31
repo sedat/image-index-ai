@@ -11,7 +11,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
   const tagsParam = Array.isArray(sp.tags) ? sp.tags[0] : sp.tags;
   const query = qParam?.trim();
   const tags = tagsParam?.split(",").filter(Boolean);
-  const data = query ? await searchImages(query) : await listImages(tags);
+  const data = query ? await searchImages(query, {limit: 10, maxDistance: 0.4}) : await listImages(tags);
   const photos = query ? data.photos : data.photos;
 
   return (

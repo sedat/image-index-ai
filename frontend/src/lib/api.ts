@@ -30,11 +30,11 @@ export async function uploadImage(args: {
   return res.json();
 }
 
-export async function searchImages(query: string): Promise<SearchResponse> {
-  const res = await fetch(apiPath("/api/images/search"), {
+export async function searchImages(query: string, opts?: { limit?: number; maxDistance?: number }): Promise<SearchResponse> {
+  const res = await fetch(apiPath("/api/images/semantic-search"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, limit: opts?.limit, max_distance: opts?.maxDistance }),
   });
   if (!res.ok) throw new Error(`Failed to search: ${res.status}`);
   return res.json();

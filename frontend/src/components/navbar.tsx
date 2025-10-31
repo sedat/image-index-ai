@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Navbar() {
   return (
@@ -10,9 +9,6 @@ export function Navbar() {
         <Link href="/" className="font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
           Image Index
         </Link>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-        </div>
       </div>
     </header>
   );
