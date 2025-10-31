@@ -15,6 +15,8 @@ use axum::Router;
 use reqwest::Client;
 use sqlx::PgPool;
 use tokio::net::TcpListener;
+use tower_http::services::ServeDir;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use crate::migrations::run as run_migrations;
@@ -27,20 +29,26 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     init_tracing();
 
+    info!("starting server initialization");
+
     // let database_url =
     //     env::var("DATABASE_URL").context("DATABASE_URL environment variable must be set")?;
 
-    let pool = PgPool::connect("postgres://user:password@localhost/locatai")
+    info!("connecting to database");
+    let pool = PgPool::connect("postgres://user:password@localhost/image-index")
         .await
         .context("failed to connect to the database")?;
 
+    info!("running database migrations");
     run_migrations(&pool).await?;
+    info!("database migrations complete");
 
     let lm_client = LmStudioClient::new(Client::new());
     let state = AppState { pool, lm_client };
 
     let app = Router::new()
         .merge(images::router())
+        .nest_service("/images", ServeDir::new("images"))
         .with_state(state)
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024));
 
@@ -49,11 +57,13 @@ async fn main() -> Result<()> {
         .await
         .with_context(|| format!("failed to bind to {bind_addr}"))?;
 
-    println!("Server listening on {bind_addr}");
+    info!(address = %bind_addr, "server listening");
 
     axum::serve(listener, app.into_make_service())
         .await
         .context("server error")?;
+
+    info!("server shutdown complete");
 
     Ok(())
 }

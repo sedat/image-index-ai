@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use tokio::fs;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::errors::{AppError, AppResult};
 
@@ -63,6 +63,12 @@ pub async fn save_image(file_name: &str, bytes: &[u8]) -> AppResult<String> {
         .await
         .with_context(|| format!("failed to write {}", path.display()))
         .map_err(AppError::from)?;
+
+    info!(
+        path = %path.display(),
+        byte_len = bytes.len(),
+        "saved image bytes to disk"
+    );
 
     path.to_str()
         .map(|s| s.to_string())
