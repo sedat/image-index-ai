@@ -12,10 +12,12 @@ Notes
 
 - Defaults: `DATABASE_URL=postgres://user:password@localhost/image-index`, `BIND_ADDR=0.0.0.0:8080`.
 - Use a local model provider (e.g., LLaVA + Llama via Ollama or LM Studio).
+- The upload page supports multi-select uploads (max 4 concurrent) with per-file progress and retry.
 
 Features
 
 - Upload images; auto-tag via vision model
+- Upload multiple images at once with per-file progress tracking
 - Browse and filter by tags in the UI
 - Natural-language search mapped to tags
 - Vector search via embeddings (pgvector)
@@ -37,11 +39,13 @@ Configuration
   - `LMSTUDIO_TEXT_MODEL` (default `qwen/qwen3-vl-4b`)
   - `LMSTUDIO_EMBED_MODEL` (default `text-embedding-nomic-embed-text-v1.5`)
   - `LMSTUDIO_TEMPERATURE` (default `0.2`)
+  - `BATCH_UPLOAD_MAX_CONCURRENCY` (default `4`)
 
 API
 
 - List images: `GET /api/images?tags=comma,separated,tags`
 - Upload image: `POST /api/images` with JSON `{ file_name, image_base64, mime_type? }`
+- Batch upload: `POST /api/images/batch` with JSON `{ items: [{ file_name, image_base64, mime_type? }, ...] }` (processes concurrently; default max 4)
 - Tag search: `POST /api/images/search` with `{ query }`
 - Vector search: `POST /api/images/semantic-search` with `{ query, limit?, max_distance? }`
 
@@ -51,6 +55,7 @@ Examples
 - Search by tags: `curl "http://localhost:8080/api/images?tags=beach,summer"`
 - Natural query: `curl -X POST http://localhost:8080/api/images/search -H 'content-type: application/json' -d '{"query":"photos of sunny beaches"}'`
 - Vector search: `curl -X POST http://localhost:8080/api/images/semantic-search -H 'content-type: application/json' -d '{"query":"rocky mountains at sunset","limit":24}'`
+- Batch upload: `curl -X POST http://localhost:8080/api/images/batch -H 'content-type: application/json' -d '{"items":[{"file_name":"a.jpg","image_base64":"...","mime_type":"image/jpeg"},{"file_name":"b.png","image_base64":"...","mime_type":"image/png"}]}'`
 
 Project structure
 

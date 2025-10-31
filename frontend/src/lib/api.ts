@@ -16,15 +16,60 @@ export async function listImages(tags?: string[]): Promise<PhotosResponse> {
   return res.json();
 }
 
-export async function uploadImage(args: {
-  fileName: string;
-  base64: string;
-  mimeType?: string;
-}): Promise<UploadResponse> {
-  const res = await fetch(apiPath("/api/images"), {
+export async function uploadImage(
+  args: {
+    fileName: string;
+    base64: string;
+    mimeType?: string;
+  },
+  opts?: { onProgress?: (percent: number) => void }
+): Promise<UploadResponse> {
+  const body = JSON.stringify({ file_name: args.fileName, image_base64: args.base64, mime_type: args.mimeType });
+
+  if (opts?.onProgress && typeof window !== "undefined") {
+    return new Promise<UploadResponse>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const href = apiPath("/api/images");
+
+      xhr.open("POST", href);
+      xhr.setRequestHeader("Content-Type", "application/json");
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const percent = Math.round((event.loaded / event.total) * 100);
+        opts.onProgress?.(percent);
+      };
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState !== XMLHttpRequest.DONE) return;
+
+        const status = xhr.status;
+        if (status < 200 || status >= 300) {
+          reject(new Error(`Failed to upload: ${status}`));
+          return;
+        }
+
+        try {
+          const json = JSON.parse(xhr.responseText) as UploadResponse;
+          resolve(json);
+        } catch {
+          reject(new Error("Upload succeeded but response was invalid JSON"));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Failed to upload: network error"));
+      };
+
+      xhr.send(body);
+    });
+  }
+
+  const href = typeof window === "undefined" ? `${API_BASE}/api/images` : apiPath("/api/images");
+  const res = await fetch(href, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file_name: args.fileName, image_base64: args.base64, mime_type: args.mimeType }),
+    body,
   });
   if (!res.ok) throw new Error(`Failed to upload: ${res.status}`);
   return res.json();
