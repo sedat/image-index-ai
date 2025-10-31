@@ -18,3 +18,5 @@ sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-native-tls", "c
 dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tower-http = { version = "0.5", features = ["fs"] }
+pgvector = { version = "0.3", features = ["sqlx"] }

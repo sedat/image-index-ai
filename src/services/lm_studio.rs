@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tracing::{debug, info};
 
 use crate::tagging::parse_tags;
 
@@ -30,6 +31,7 @@ pub struct LmStudioClient {
     base_url: String,
     image_model: String,
     text_model: String,
+    embed_model: String,
     temperature: f32,
 }
 
@@ -39,17 +41,35 @@ impl LmStudioClient {
             .unwrap_or_else(|_| "http://localhost:1234/v1".to_string());
         let image_model =
             env::var("LMSTUDIO_IMAGE_MODEL").unwrap_or_else(|_| "qwen/qwen3-vl-4b".to_string());
-        let text_model = env::var("LMSTUDIO_TEXT_MODEL").unwrap_or_else(|_| "llama2".to_string());
+        let text_model =
+            env::var("LMSTUDIO_TEXT_MODEL").unwrap_or_else(|_| "qwen/qwen3-vl-4b".to_string());
+        let embed_model_raw = env::var("LMSTUDIO_EMBED_MODEL")
+            .unwrap_or_else(|_| "text-embedding-nomic-embed-text-v1.5".to_string());
+        let embed_model = if embed_model_raw == "nomic-ai/nomic-embed-text-v1.5" {
+            // Map LM Studio's internal name to the OpenAI-compatible alias we prefer.
+            "text-embedding-nomic-embed-text-v1.5".to_string()
+        } else {
+            embed_model_raw
+        };
         let temperature = env::var("LMSTUDIO_TEMPERATURE")
             .ok()
             .and_then(|value| value.parse::<f32>().ok())
             .unwrap_or(0.2);
+
+        info!(
+            base_url = %base_url,
+            image_model = %image_model,
+            text_model = %text_model,
+            embed_model = %embed_model,
+            "configured LM Studio client"
+        );
 
         Self {
             http,
             base_url,
             image_model,
             text_model,
+            embed_model,
             temperature,
         }
     }
@@ -78,12 +98,26 @@ impl LmStudioClient {
             }),
         ];
 
+        info!(
+            model = %self.image_model,
+            mime_type,
+            "requesting image tags from LM Studio"
+        );
+
         let response = self
             .chat_completion(&self.image_model, messages)
             .await
             .context("LM Studio failed to tag image")?;
 
-        Ok(parse_tags(&response))
+        let tags = parse_tags(&response);
+
+        info!(
+            model = %self.image_model,
+            tag_count = tags.len(),
+            "received image tags from LM Studio"
+        );
+
+        Ok(tags)
     }
 
     pub async fn tags_from_query(&self, query: &str) -> Result<Vec<String>> {
@@ -105,12 +139,25 @@ impl LmStudioClient {
             }),
         ];
 
+        info!(
+            model = %self.text_model,
+            "requesting search tags from LM Studio"
+        );
+
         let response = self
             .chat_completion(&self.text_model, messages)
             .await
             .context("LM Studio failed to process search query")?;
 
-        Ok(parse_tags(&response))
+        let tags = parse_tags(&response);
+
+        info!(
+            model = %self.text_model,
+            tag_count = tags.len(),
+            "received search tags from LM Studio"
+        );
+
+        Ok(tags)
     }
 
     async fn chat_completion(&self, model: &str, messages: Vec<Value>) -> Result<String> {
@@ -121,6 +168,8 @@ impl LmStudioClient {
             "messages": messages,
             "temperature": self.temperature,
         });
+
+        debug!(model = %model, url = %url, "sending LM Studio chat completion request");
 
         let response = self
             .http
@@ -149,7 +198,60 @@ impl LmStudioClient {
             .into_string()
             .context("LM Studio response did not include textual content")?;
 
-        Ok(text.trim().to_string())
+        let trimmed = text.trim().to_string();
+
+        debug!(
+            model = %model,
+            response_len = trimmed.len(),
+            "received LM Studio chat completion response"
+        );
+
+        Ok(trimmed)
+    }
+
+    pub async fn embed_texts(&self, inputs: &[String]) -> Result<Vec<Vec<f32>>> {
+        let url = format!("{}/embeddings", self.base_url.trim_end_matches('/'));
+
+        let body = json!({
+            "model": self.embed_model,
+            "input": inputs,
+        });
+
+        info!(
+            model = %self.embed_model,
+            count = inputs.len(),
+            "requesting embeddings from LM Studio"
+        );
+
+        let response = self
+            .http
+            .post(url)
+            .json(&body)
+            .send()
+            .await
+            .context("failed to contact LM Studio for embeddings")?
+            .error_for_status()
+            .context("LM Studio embeddings returned an error status")?;
+
+        let payload: EmbeddingsResponse = response
+            .json()
+            .await
+            .context("LM Studio embeddings response was not valid JSON")?;
+
+        let mut result = Vec::with_capacity(payload.data.len());
+        for item in payload.data {
+            result.push(item.embedding);
+        }
+
+        if result.len() != inputs.len() {
+            anyhow::bail!(
+                "LM Studio returned {} embeddings for {} inputs",
+                result.len(),
+                inputs.len()
+            );
+        }
+
+        Ok(result)
     }
 }
 
@@ -203,4 +305,14 @@ struct MessagePart {
     #[serde(rename = "type")]
     _kind: String,
     text: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct EmbeddingsResponse {
+    data: Vec<EmbeddingItem>,
+}
+
+#[derive(Deserialize)]
+struct EmbeddingItem {
+    embedding: Vec<f32>,
 }
